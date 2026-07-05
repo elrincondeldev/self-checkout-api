@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import engine
+from app.routers import products
 
 settings = get_settings()
 
@@ -20,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(products.router)
 
 
 @app.get("/health", tags=["ops"])

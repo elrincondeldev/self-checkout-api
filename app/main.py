@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import engine
-from app.routers import products, scan
+from app.routers import checkout, products, scan
 
 settings = get_settings()
 
@@ -25,6 +25,7 @@ app.add_middleware(
 
 app.include_router(products.router)
 app.include_router(scan.router)
+app.include_router(checkout.router)
 
 
 @app.get("/health", tags=["ops"])

@@ -380,6 +380,7 @@ app/
     scan.py             # POST /scan + WS /ws
     checkout.py         # POST /checkout + transactions
 alembic/                # migrations
+firmware/               # ESP32-CAM + PN532 scanner sketch (see firmware/README.md)
 requirements.txt
 .env.example
 ```

@@ -2,6 +2,7 @@
 .env
 .venv/
 venv/
+firmware/self_checkout_scanner/config.h
 
 # Python
 __pycache__/

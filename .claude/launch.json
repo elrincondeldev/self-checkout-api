@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kiosk-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/jr/Documents/GitHub Projects/self-checkout-ui"
+      ],
+      "port": 5173
+    }
+  ]
+}

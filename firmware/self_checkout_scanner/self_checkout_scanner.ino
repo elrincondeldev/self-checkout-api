@@ -20,12 +20,9 @@
 #include <Wire.h>
 #include <Adafruit_PN532.h>
 
-// ---------- CONFIG: edit these ----------
-const char *WIFI_SSID     = "YOUR_WIFI_SSID";
-const char *WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-const char *API_BASE      = "http://192.168.1.146:8123"; // computer running the API
-const char *API_KEY       = "dev-secret-key";            // must match API .env
-// ----------------------------------------
+// Wi-Fi + API credentials live in config.h (git-ignored).
+// Copy config.example.h to config.h and fill in real values.
+#include "config.h"
 
 #define SDA_PIN 14
 #define SCL_PIN 15
@@ -74,10 +71,28 @@ void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
   Serial.printf("Connecting to WiFi '%s'", WIFI_SSID);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);       // modem sleep causes dropped scans on some routers
+  WiFi.persistent(false);     // don't wear NVS with credential rewrites
+  WiFi.disconnect(true, true); // drop any stale session the router still holds
+  delay(200);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  // Some routers (Digi/DIGIFIBRA among them) refuse an association while a
+  // previous session lingers ("comeback time too long"). WiFi.begin() alone
+  // never recovers from that — tear down and retry the association instead
+  // of waiting forever.
+  unsigned long waited = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(400);
     Serial.print(".");
+    waited += 400;
+    if (waited >= 15000) {
+      Serial.println("\nAssociation stuck — retrying");
+      WiFi.disconnect(true);
+      delay(500);
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      waited = 0;
+    }
   }
   Serial.printf("\nWiFi OK, IP: %s\n", WiFi.localIP().toString().c_str());
 }

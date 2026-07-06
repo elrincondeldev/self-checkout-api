@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +11,8 @@ from app.schemas import ProductOut, ScanRequest
 from app.ws import manager
 
 router = APIRouter(tags=["scan"])
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @router.post(
@@ -24,6 +28,7 @@ async def scan(payload: ScanRequest, db: Session = Depends(get_db)) -> Product:
         )
     )
     if product is None:
+        logger.info("Scan for unregistered tag: %s", payload.tag_id)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, f"No active product for tag '{payload.tag_id}'"
         )

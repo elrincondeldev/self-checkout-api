@@ -9,22 +9,28 @@ from app.models import TransactionStatus
 # --- Products ---
 
 class ProductBase(BaseModel):
-    nfc_tag_id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     description: str | None = None
+    category: str | None = Field(default=None, max_length=60)
+    size: str | None = Field(default=None, max_length=20)
+    color: str | None = Field(default=None, max_length=40)
     price: Decimal = Field(gt=0, decimal_places=2)
     stock: int = Field(ge=0, default=0)
     is_active: bool = True
 
 
 class ProductCreate(ProductBase):
-    pass
+    # Optional first sticker to register along with the product;
+    # add more units later via POST /products/{id}/tags
+    nfc_tag_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ProductUpdate(BaseModel):
-    nfc_tag_id: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
+    category: str | None = Field(default=None, max_length=60)
+    size: str | None = Field(default=None, max_length=20)
+    color: str | None = Field(default=None, max_length=40)
     price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
     stock: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
@@ -34,14 +40,34 @@ class ProductOut(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    nfc_tag_ids: list[str]
     created_at: datetime
     updated_at: datetime
+
+
+# --- Tags (physical NFC stickers) ---
+
+class TagCreate(BaseModel):
+    nfc_tag_id: str = Field(min_length=1, max_length=64)
+
+
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    nfc_tag_id: str
+    product_id: int
+    created_at: datetime
 
 
 # --- Scan ---
 
 class ScanRequest(BaseModel):
     tag_id: str = Field(min_length=1, max_length=64)
+
+
+class ScanResult(BaseModel):
+    tag_id: str
+    product: ProductOut
 
 
 # --- Checkout / transactions ---

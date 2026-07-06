@@ -1,9 +1,14 @@
-# Self-Checkout API
+# Self-Checkout API — Clothing Shop
 
-FastAPI backend for an NFC-based self-checkout system. An **ESP32** with an NFC
-reader scans product tags, the **kiosk UI** receives scanned products in real
-time over WebSocket, and completed purchases are stored in **PostgreSQL**
-(hosted on Railway).
+FastAPI backend for an NFC-based clothing-store self-checkout. Every garment
+carries its own NFC sticker; an **ESP32** reads it, the **kiosk UI** receives
+the product in real time over WebSocket, and completed purchases are stored in
+**PostgreSQL** (hosted on Railway).
+
+**Tag model:** one sticker = one physical garment. Many stickers map to the
+same product (five identical t-shirts → five tags → one product with stock 5)
+via the `product_tags` table. Sticker UIDs are factory-burned — "registering"
+a garment means linking its UID to a product in the database.
 
 ```
 ┌────────┐   POST /scan    ┌─────────┐   WS push {event: scan}   ┌──────────┐
@@ -102,22 +107,29 @@ Content-Type: application/json
 { "tag_id": "04:A3:2B:1C" }
 ```
 
-Looks up an **active** product by NFC tag. On success the product is returned
-to the ESP32 **and** broadcast to every kiosk UI connected on `/ws`.
+Looks up an **active** product owning that tag (via `product_tags`). On
+success the result is returned to the ESP32 **and** broadcast to every kiosk
+UI connected on `/ws`.
 
 **200 — product found:**
 
 ```json
 {
-  "id": 1,
-  "nfc_tag_id": "04:A3:2B:1C",
-  "name": "Coca-Cola 500ml",
-  "description": null,
-  "price": "1.75",
-  "stock": 22,
-  "is_active": true,
-  "created_at": "2026-07-05T20:21:34.408239Z",
-  "updated_at": "2026-07-05T20:21:56.994227Z"
+  "tag_id": "A0:D6:8E:39",
+  "product": {
+    "id": 1,
+    "name": "Basic T-Shirt",
+    "description": "100% cotton crew neck",
+    "category": "t-shirts",
+    "size": "M",
+    "color": "black",
+    "price": "12.99",
+    "stock": 10,
+    "is_active": true,
+    "nfc_tag_ids": ["A0:D6:8E:39"],
+    "created_at": "2026-07-05T20:21:34.408239Z",
+    "updated_at": "2026-07-06T14:58:09.046964Z"
+  }
 }
 ```
 
@@ -153,19 +165,14 @@ Listen-only stream of scan events. Every successful `/scan` produces:
 ```json
 {
   "event": "scan",
-  "product": {
-    "id": 1,
-    "nfc_tag_id": "04:A3:2B:1C",
-    "name": "Coca-Cola 500ml",
-    "description": null,
-    "price": "1.75",
-    "stock": 22,
-    "is_active": true,
-    "created_at": "2026-07-05T20:21:34.408239Z",
-    "updated_at": "2026-07-05T20:21:56.994227Z"
-  }
+  "tag_id": "A0:D6:8E:39",
+  "product": { "...": "same shape as the /scan response product" }
 }
 ```
+
+`tag_id` identifies the **physical garment**. Since each sticker is one item,
+the UI should treat a repeated `tag_id` as "already in cart" instead of
+incrementing quantity — different tags of the same product stack normally.
 
 **Frontend example:**
 
@@ -191,6 +198,7 @@ Product management (register NFC tags, prices, stock).
 | Query param | Default | Description |
 |---|---|---|
 | `include_inactive` | `false` | Also return soft-deleted products |
+| `category` | — | Filter by category (e.g. `t-shirts`) |
 | `limit` | `100` | Page size (1–500) |
 | `offset` | `0` | Pagination offset |
 
@@ -204,40 +212,48 @@ Single product. `404` if the id doesn't exist.
 
 ```json
 {
-  "nfc_tag_id": "04:B7:99:F2",
-  "name": "Chips Original 150g",
-  "description": "Salted potato chips",
-  "price": "2.25",
-  "stock": 10,
-  "is_active": true
+  "name": "Classic Hoodie",
+  "description": "Fleece-lined pullover hoodie",
+  "category": "hoodies",
+  "size": "L",
+  "color": "grey",
+  "price": "29.99",
+  "stock": 5,
+  "nfc_tag_id": "9C:4C:52:07"
 }
 ```
 
-`description`, `stock` (default 0) and `is_active` (default true) are optional.
-`price` must be > 0 with max 2 decimal places.
-
-`409` if the NFC tag is already assigned:
-
-```json
-{ "detail": "NFC tag '04:B7:99:F2' is already assigned to product 2" }
-```
+`description`, `category`, `size`, `color`, `stock` (default 0) and
+`is_active` (default true) are optional. `price` must be > 0 with max 2
+decimal places. `nfc_tag_id` optionally registers the first sticker along
+with the product — add the rest via the tags endpoints below (`409` if the
+sticker already belongs to a product).
 
 #### `PATCH /products/{id}`
 
 Partial update — send only the fields to change:
 
 ```json
-{ "price": "1.99", "stock": 50 }
+{ "price": "24.99", "stock": 8 }
 ```
-
-Same `409` rule when changing `nfc_tag_id` to a taken tag.
 
 #### `DELETE /products/{id}`
 
 **Soft delete**: sets `is_active = false` and returns the updated product.
-The row stays (transaction history references it), the tag stops scanning,
+The row stays (transaction history references it), its tags stop scanning,
 and it disappears from default listings. Reactivate with
 `PATCH {"is_active": true}`.
+
+#### Tags — one row per physical sticker
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/products/{id}/tags` | List stickers registered to a product |
+| POST | `/products/{id}/tags` | Register another unit: `{"nfc_tag_id": "..."}` → 201, or 409 if taken |
+| DELETE | `/products/{id}/tags/{nfc_tag_id}` | Unregister a sticker → 204 |
+
+Typical flow for 5 identical shirts: create the product once (first sticker
+inline), then `POST /products/{id}/tags` for the other four.
 
 ---
 
@@ -312,16 +328,22 @@ Single receipt. `404` if not found.
 ## Data model
 
 ```
-products                        transactions
+products                        product_tags (1 sticker = 1 garment)
 ├── id            serial PK     ├── id          serial PK
-├── nfc_tag_id    unique, idx   ├── total       numeric(10,2)
-├── name                        ├── status      completed | cancelled
-├── description                 └── created_at  timestamptz
-├── price         numeric(10,2)
-├── stock         int           transaction_items
-├── is_active     bool          ├── id             serial PK
-├── created_at    timestamptz   ├── transaction_id FK → transactions
-└── updated_at    timestamptz   ├── product_id     FK → products
+├── name                        ├── nfc_tag_id  unique, idx
+├── description                 ├── product_id  FK → products
+├── category      idx           └── created_at  timestamptz
+├── size
+├── color                       transactions
+├── price         numeric(10,2) ├── id          serial PK
+├── stock         int           ├── total       numeric(10,2)
+├── is_active     bool          ├── status      completed | cancelled
+├── created_at    timestamptz   └── created_at  timestamptz
+└── updated_at    timestamptz
+                                transaction_items
+                                ├── id             serial PK
+                                ├── transaction_id FK → transactions
+                                ├── product_id     FK → products
                                 ├── quantity       int
                                 ├── unit_price     numeric(10,2)  ← snapshot
                                 └── subtotal       numeric(10,2)
@@ -336,7 +358,7 @@ Errors are always `{ "detail": "<message>" }` (FastAPI validation errors on
 |---|---|---|
 | 401 | `/scan` | Bad or missing `X-API-Key` |
 | 404 | `/scan`, `/products/{id}`, `/transactions/{id}` | Resource not found / inactive tag |
-| 409 | `POST/PATCH /products` | NFC tag already assigned |
+| 409 | `POST /products`, `POST /products/{id}/tags` | NFC sticker already assigned |
 | 409 | `/checkout` | Insufficient stock, or unknown/inactive product |
 | 422 | any | Request body failed validation |
 

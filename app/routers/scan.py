@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import require_api_key
-from app.models import Product
-from app.schemas import ProductOut, ScanRequest
+from app.models import Product, ProductTag
+from app.schemas import ProductOut, ScanRequest, ScanResult
 from app.ws import manager
 
 router = APIRouter(tags=["scan"])
@@ -17,13 +17,15 @@ logger = logging.getLogger("uvicorn.error")
 
 @router.post(
     "/scan",
-    response_model=ProductOut,
+    response_model=ScanResult,
     dependencies=[Depends(require_api_key)],
 )
-async def scan(payload: ScanRequest, db: Session = Depends(get_db)) -> Product:
+async def scan(payload: ScanRequest, db: Session = Depends(get_db)) -> ScanResult:
     product = db.scalar(
-        select(Product).where(
-            Product.nfc_tag_id == payload.tag_id,
+        select(Product)
+        .join(ProductTag, ProductTag.product_id == Product.id)
+        .where(
+            ProductTag.nfc_tag_id == payload.tag_id,
             Product.is_active.is_(True),
         )
     )
@@ -33,11 +35,9 @@ async def scan(payload: ScanRequest, db: Session = Depends(get_db)) -> Product:
             status.HTTP_404_NOT_FOUND, f"No active product for tag '{payload.tag_id}'"
         )
 
-    product_out = ProductOut.model_validate(product)
-    await manager.broadcast(
-        {"event": "scan", "product": product_out.model_dump(mode="json")}
-    )
-    return product
+    result = ScanResult(tag_id=payload.tag_id, product=ProductOut.model_validate(product))
+    await manager.broadcast({"event": "scan", **result.model_dump(mode="json")})
+    return result
 
 
 @router.websocket("/ws")

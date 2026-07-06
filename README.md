@@ -139,7 +139,25 @@ UI connected on `/ws`.
 | 404 | Unknown tag, or product soft-deleted | Error beep |
 | 401 | Bad/missing `X-API-Key` | Check firmware config |
 
-Nothing is broadcast on 404/401.
+On 404 the API broadcasts `{"event": "unknown_tag", "tag_id": "..."}` to the
+kiosk (which shows the UID on screen) — nothing is broadcast on 401.
+
+#### `GET /scans/recent`
+
+Last 50 scans, newest first, known and unknown alike — the operator's tool
+for registering new garments: scan the sticker, read its UID here (or off
+the kiosk toast), create the product with it.
+
+```json
+[
+  { "tag_id": "DE:AD:BE:EF", "known": false, "product_id": null,
+    "product_name": null, "scanned_at": "2026-07-06T16:02:12.210139+00:00" },
+  { "tag_id": "A0:D6:8E:39", "known": true, "product_id": 1,
+    "product_name": "Basic T-Shirt", "scanned_at": "2026-07-06T16:02:11.922047+00:00" }
+]
+```
+
+In-memory only — the list resets when the API restarts.
 
 **Arduino-style sketch of the call:**
 
